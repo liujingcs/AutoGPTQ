@@ -4,8 +4,8 @@ from transformers import AutoTokenizer, TextGenerationPipeline
 from auto_gptq import AutoGPTQForCausalLM, BaseQuantizeConfig
 
 
-pretrained_model_dir = "facebook/opt-125m"
-quantized_model_dir = "opt-125m-4bit-128g"
+pretrained_model_dir = "/home/liujing/External/model/llama/llama2-7b"
+quantized_model_dir = "/home/liujing/External/model/llama/llama2-7b-4bit-128g"
 
 
 def main():

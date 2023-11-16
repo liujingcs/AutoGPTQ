@@ -110,7 +110,8 @@ def load_data(data_path, tokenizer, n_samples, max_new_tokens):
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
-            "prompt": prompts
+            "prompt": prompts,
+            "text": texts
         }
 
     dataset = Dataset.from_generator(dummy_gen)
@@ -188,39 +189,29 @@ def load_model_tokenizer(
 def benchmark_generation_speed(model, tokenizer, examples, generation_config):
     generation_time_list = []
     num_generated_tokens_list = []
-    progress_bar = tqdm(examples)
-    for example in progress_bar:
-        input_ids = example["input_ids"].to(model.device)
+    questions = [example['text'] for example in examples]
 
-        start = time.time()
-        outputs_ids = model.generate(
-            input_ids=input_ids.unsqueeze(0),
-            generation_config=generation_config,
-            logits_processor=[
-                CustomizedMinNewTokensLogitsProcessor(generation_config.max_new_tokens, tokenizer.eos_token_id)
+    model_inputs = tokenizer(questions, return_tensors="pt", padding=True).to("cuda")
+
+    start = time.time()
+    outputs_ids = model.generate(**model_inputs, 
+                                   generation_config=generation_config,
+                                   logits_processor=[
+                                       CustomizedMinNewTokensLogitsProcessor(generation_config.max_new_tokens, tokenizer.eos_token_id)
+                                       ])
+    end = time.time()
+    generation_time_list.append(end - start)
+    num_generated_tokens = 0
+    for idx, output_ids in enumerate(outputs_ids):
+        num_generated_tokens += len(
+            [
+                token_id for token_id in output_ids[len(model_inputs['input_ids'][idx]):] if token_id != tokenizer.pad_token_id
             ]
         )
-        end = time.time()
-
-        generation_time_list.append(end - start)
-        num_generated_tokens = 0
-        for output_ids in outputs_ids:
-            num_generated_tokens += len(
-                [
-                    token_id for token_id in output_ids[len(input_ids):] if token_id != tokenizer.pad_token_id
-                ]
-            )
-        num_generated_tokens_list.append(num_generated_tokens)
-
-        progress_bar.set_postfix(
-            num_tokens=num_generated_tokens_list[-1],
-            time=generation_time_list[-1],
-            speed=f"{num_generated_tokens_list[-1] / generation_time_list[-1]:.4f}tokens/s"
-        )
-
+    num_generated_tokens_list.append(num_generated_tokens)
     total_tokens = sum(num_generated_tokens_list)
     total_seconds = sum(generation_time_list)
-    logger.info(
+    print(
         f"generated {total_tokens} tokens using {total_seconds} seconds, "
         f"generation speed: {total_tokens / total_seconds}tokens/s"
     )

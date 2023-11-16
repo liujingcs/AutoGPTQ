@@ -12,10 +12,13 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, GenerationConfig
 from transformers.generation.logits_process import LogitsProcessor
 from datasets import Dataset
+import datautils
 
 logger = logging.getLogger(__name__)
 
 random.seed(0)
+
+DEV = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
 
 class CustomizedMinNewTokensLogitsProcessor(LogitsProcessor):
@@ -110,7 +113,8 @@ def load_data(data_path, tokenizer, n_samples, max_new_tokens):
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
-            "prompt": prompts
+            "prompt": prompts,
+            "text": texts
         }
 
     dataset = Dataset.from_generator(dummy_gen)
@@ -185,45 +189,70 @@ def load_model_tokenizer(
     return model, tokenizer
 
 
-def benchmark_generation_speed(model, tokenizer, examples, generation_config):
-    generation_time_list = []
-    num_generated_tokens_list = []
-    progress_bar = tqdm(examples)
-    for example in progress_bar:
-        input_ids = example["input_ids"].to(model.device)
+def llama_benchmark(model, testenc, check=False):
+    model.config.use_cache = True
+    input_ids = testenc.input_ids
+    input_ids = input_ids.to(model.gpus[0] if hasattr(model, 'gpus') else DEV)
+    torch.cuda.synchronize()
 
-        start = time.time()
-        outputs_ids = model.generate(
-            input_ids=input_ids.unsqueeze(0),
-            generation_config=generation_config,
-            logits_processor=[
-                CustomizedMinNewTokensLogitsProcessor(generation_config.max_new_tokens, tokenizer.eos_token_id)
-            ]
-        )
-        end = time.time()
+    seq_len = model.seqlen
+    nsamples = input_ids.numel() // seq_len
+    max_samples = 128
+    nsamples = min(nsamples, max_samples)
 
-        generation_time_list.append(end - start)
-        num_generated_tokens = 0
-        for output_ids in outputs_ids:
-            num_generated_tokens += len(
-                [
-                    token_id for token_id in output_ids[len(input_ids):] if token_id != tokenizer.pad_token_id
-                ]
+    cache = {'past': None}
+    def clear_past(i):
+        def tmp(layer, inp, out):
+            if cache['past']:
+                cache['past'][i] = None
+        return tmp
+    for i, layer in enumerate(model.model.model.layers):
+        layer.register_forward_hook(clear_past(i))
+
+    print('Benchmarking ...')
+
+    if check:
+        loss = torch.nn.CrossEntropyLoss()
+        tot = 0.
+
+    def sync():
+        if hasattr(model, 'gpus'):
+            for gpu in model.gpus:
+                torch.cuda.synchronize(gpu)
+        else:
+            torch.cuda.synchronize()
+    with torch.no_grad():
+        attention_mask = torch.ones((1, input_ids.numel()), device=DEV)
+        seq_len = model.seqlen
+        times = []
+        tknps = []
+        torch.cuda.cudart().cudaProfilerStart()
+
+        for i in tqdm(range(nsamples), desc='Benchmarking', ncols=80):
+            batch = input_ids[:, (i * seq_len):((i + 1) * seq_len)].to(DEV)
+            start_time = time.perf_counter()
+            out = model(
+                batch,
+                past_key_values=None,
+                attention_mask=attention_mask[:, :seq_len].reshape((1, -1))
+            #     past_key_values=cache['past'],
+            #     attention_mask=attention_mask[:, :(i + 1)*model.seqlen].reshape((1, -1))
             )
-        num_generated_tokens_list.append(num_generated_tokens)
-
-        progress_bar.set_postfix(
-            num_tokens=num_generated_tokens_list[-1],
-            time=generation_time_list[-1],
-            speed=f"{num_generated_tokens_list[-1] / generation_time_list[-1]:.4f}tokens/s"
-        )
-
-    total_tokens = sum(num_generated_tokens_list)
-    total_seconds = sum(generation_time_list)
-    logger.info(
-        f"generated {total_tokens} tokens using {total_seconds} seconds, "
-        f"generation speed: {total_tokens / total_seconds}tokens/s"
-    )
+            sync()
+            times.append(time.perf_counter() - start_time)
+            tknps.append(batch.shape[-1] // times[-1])
+            if check and i != input_ids.numel() - 1:
+                tot += loss(out.logits[0].to(DEV), input_ids[:, (i + 1)].to(DEV)).float()
+            cache['past'] = list(out.past_key_values)
+            del out
+        sync()
+        torch.cuda.cudart().cudaProfilerStop()
+        import numpy as np
+        print(f'Median times: {np.median(times)} +- {1.96 * np.std(times[2:-2])}')
+        print(f'Median tokens/second: {np.median(tknps)} +- {1.96 * np.std(tknps[2:-2])}', )
+        if check:
+            print('PPL:', torch.exp(tot / (input_ids.numel() - 1)).item())
+        return np.median(times)
 
 
 def main():
@@ -246,6 +275,11 @@ def main():
     parser.add_argument("--max_new_tokens", type=int, default=512)
     parser.add_argument("--do_sample", action="store_true")
     parser.add_argument("--num_beams", type=int, default=1)
+    parser.add_argument(
+        '--seed',
+        type=int, default=0, help='Seed for sampling the calibration data.'
+    )
+    parser.add_argument('--seq_len', type=int, default=2048, help='Sequence length used in evaluations and benchmarks.')
     args = parser.parse_args()
 
     max_memory = dict()
@@ -295,23 +329,11 @@ def main():
         logger.info("warmup triton, this may take a while.")
         model.warmup_triton()
 
-    logger.info("loading data")
-    examples = load_data(
-        "/home/liujing/Codes/transformer/iclr2024/AutoGPTQ/examples/quantization/dataset/alpaca_data_cleaned.json", tokenizer, args.num_samples, args.max_new_tokens
+    dataset = 'wikitext2'
+    dataloader, testloader = datautils.get_loaders(
+        dataset, seed=args.seed, model=args.model_name_or_path, seqlen=model.seqlen,
     )
-
-    generation_config = GenerationConfig(
-        num_beams=args.num_beams,
-        num_return_sequences=args.num_beams,
-        do_sample=args.do_sample,
-        min_new_tokens=args.max_new_tokens,
-        max_new_tokens=args.max_new_tokens,
-        pad_token_id=tokenizer.pad_token_id
-    )
-    logger.info(f"generation config: {generation_config.to_dict()}")
-
-    logger.info(f"benchmark generation speed")
-    benchmark_generation_speed(model, tokenizer, examples, generation_config)
+    llama_benchmark(model, testloader, check=False)
 
 
 if __name__ == "__main__":

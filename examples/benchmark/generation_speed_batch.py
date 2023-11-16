@@ -288,7 +288,7 @@ def main():
 
     logger.info("loading data")
     examples = load_data(
-        "/home/liujing/Codes/transformer/iclr2024/AutoGPTQ/examples/quantization/dataset/alpaca_data_cleaned.json", tokenizer, args.num_samples, args.max_new_tokens
+        "../quantization/dataset/alpaca_data_cleaned.json", tokenizer, args.num_samples, args.max_new_tokens
     )
 
     generation_config = GenerationConfig(

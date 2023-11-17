@@ -163,6 +163,7 @@ def load_model_tokenizer(
             quantize_config=BaseQuantizeConfig(),
             max_memory=max_memory,
             trust_remote_code=trust_remote_code
+            local_files_only=True
         )
         model = model.to("cuda")
     else:

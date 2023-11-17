@@ -158,6 +158,8 @@ def load_model_tokenizer(
     #     use_fast=use_fast_tokenizer,
     #     trust_remote_code=trust_remote_code
     # )
+    print(AutoTokenizer)
+    print(model_name_or_path)
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=False)
     if not tokenizer.pad_token_id:
         tokenizer.pad_token_id = tokenizer.eos_token_id

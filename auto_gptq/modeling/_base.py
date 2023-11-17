@@ -669,7 +669,7 @@ class BaseGPTQForCausalLM(nn.Module, PushToHubMixin):
         # model = AutoModelForCausalLM.from_pretrained(pretrained_model_name_or_path, **merged_kwargs)
         # model = AutoModelForCausalLM.from_pretrained(pretrained_model_name_or_path, **merged_kwargs)
         print(config)
-        model = AutoModelForCausalLM.from_config(config, trust_remote_code=True, **merged_kwargs)
+        model = AutoModelForCausalLM.from_config(config, **merged_kwargs)
 
         model_config = model.config.to_dict()
         seq_len_keys = ["max_position_embeddings", "seq_length", "n_positions"]

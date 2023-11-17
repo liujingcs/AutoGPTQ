@@ -3,12 +3,12 @@ from logging import getLogger
 from ._base import *
 from ..utils.import_utils import compare_transformers_version
 
-if compare_transformers_version("v4.28.0", op="ge"):
-    from ..nn_modules.fused_llama_attn import FusedLlamaAttentionForQuantizedModel
-    from ..nn_modules.fused_llama_mlp import FusedLlamaMLPForQuantizedModel
-else:
-    FusedLlamaAttentionForQuantizedModel = None
-    FusedLlamaMLPForQuantizedModel = None
+# if compare_transformers_version("v4.28.0", op="ge"):
+#     from ..nn_modules.fused_llama_attn import FusedLlamaAttentionForQuantizedModel
+#     from ..nn_modules.fused_llama_mlp import FusedLlamaMLPForQuantizedModel
+# else:
+FusedLlamaAttentionForQuantizedModel = None
+FusedLlamaMLPForQuantizedModel = None
 
 logger = getLogger(__name__)
 

@@ -149,11 +149,12 @@ def load_model_tokenizer(
     inject_fused_mlp: bool = True,
     disable_exllama: bool = False
 ):
-    tokenizer = AutoTokenizer.from_pretrained(
-        pretrained_model_name_or_path=tokenizer_name_or_path or model_name_or_path,
-        use_fast=use_fast_tokenizer,
-        trust_remote_code=trust_remote_code
-    )
+    # tokenizer = AutoTokenizer.from_pretrained(
+    #     pretrained_model_name_or_path=tokenizer_name_or_path or model_name_or_path,
+    #     use_fast=use_fast_tokenizer,
+    #     trust_remote_code=trust_remote_code
+    # )
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=False)
     if not tokenizer.pad_token_id:
         tokenizer.pad_token_id = tokenizer.eos_token_id
 

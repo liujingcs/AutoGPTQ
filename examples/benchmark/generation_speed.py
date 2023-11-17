@@ -141,7 +141,7 @@ def load_model_tokenizer(
     max_memory: Optional[dict] = None,
     model_basename: Optional[str] = None,
     quantize_config: Optional[str] = None,
-    trust_remote_code: bool = False,
+    trust_remote_code: bool = True,
     use_triton: bool = False,
     use_safetensors: bool = True,
     use_fast_tokenizer: bool = False,

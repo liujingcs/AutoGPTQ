@@ -13,6 +13,7 @@ from transformers import AutoTokenizer, GenerationConfig
 from transformers.generation.logits_process import LogitsProcessor
 from datasets import Dataset
 import datautils
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +231,7 @@ def llama_benchmark(model, testenc, check=False):
 
         for i in tqdm(range(nsamples), desc='Benchmarking', ncols=80):
             batch = input_ids[:, (i * seq_len):((i + 1) * seq_len)].to(DEV)
+            torch.cuda.set_device(DEV)
             start_time = time.perf_counter()
             out = model(
                 batch,
@@ -253,6 +255,42 @@ def llama_benchmark(model, testenc, check=False):
         if check:
             print('PPL:', torch.exp(tot / (input_ids.numel() - 1)).item())
         return np.median(times)
+
+
+def llama_multigpu(model, gpus):
+    model.model.embed_tokens = model.model.embed_tokens.to(gpus[0])
+    import copy
+    model.lm_head = copy.deepcopy(model.lm_head).to(gpus[-1])
+    if hasattr(model.model, 'norm') and model.model.norm is not None:
+        model.model.norm = model.model.norm.to(gpus[-1])
+
+    cache = {'mask': None, 'positions': None}
+
+    class MoveModule(torch.nn.Module):
+        def __init__(self, module):
+            super().__init__()
+            self.module = module
+            self.dev = next(iter(self.module.parameters())).device
+        def forward(self, *inp, **kwargs):
+            inp = list(inp)
+            if inp[0].device != self.dev:
+                torch.cuda.set_device(self.dev)
+                inp[0] = inp[0].to(self.dev)
+            if cache['mask'] is None or cache['positions'] is None or cache['mask'].device != self.dev:
+                cache['mask'] = kwargs['attention_mask'].to(self.dev)
+                cache['positions'] = kwargs['position_ids'].to(self.dev)
+            kwargs['attention_mask'] = cache['mask']
+            kwargs['position_ids'] = cache['positions']
+            tmp = self.module(*inp, **kwargs)
+            return tmp
+
+    layers = model.model.layers
+    pergpu = math.ceil(len(layers) / len(gpus))
+    for i in range(len(layers)):
+        print("Move layer {} to gpu: {}".format(i, gpus[i // pergpu]))
+        layers[i] = MoveModule(layers[i].to(gpus[i // pergpu]))
+
+    model.gpus = gpus
 
 
 def main():
@@ -333,6 +371,11 @@ def main():
     dataloader, testloader = datautils.get_loaders(
         dataset, seed=args.seed, model=args.model_name_or_path, seqlen=model.seqlen,
     )
+    gpus = [torch.device('cuda:%d' % i) for i in range(torch.cuda.device_count())]
+    if len(gpus) > 1:
+        llama_multigpu(model, gpus)
+    else:
+        model = model.to(DEV)
     llama_benchmark(model, testloader, check=False)
 
 

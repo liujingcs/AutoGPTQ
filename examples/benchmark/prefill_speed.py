@@ -289,7 +289,7 @@ def llama_multigpu(model, gpus):
     for i in range(len(layers)):
         print("Move layer {} to gpu: {}".format(i, gpus[i // pergpu]))
         layers[i] = MoveModule(layers[i].to(gpus[i // pergpu]))
-        print(layers[i].device)
+        print(layers[i].module.device)
 
     model.gpus = gpus
 

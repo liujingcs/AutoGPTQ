@@ -274,7 +274,7 @@ def llama_multigpu(model, gpus):
         def forward(self, *inp, **kwargs):
             inp = list(inp)
             if inp[0].device != self.dev:
-                torch.cuda.set_device(self.dev)
+                # torch.cuda.set_device(self.dev)
                 inp[0] = inp[0].to(self.dev)
             if cache['mask'] is None or cache['positions'] is None or cache['mask'].device != self.dev:
                 cache['mask'] = kwargs['attention_mask'].to(self.dev)

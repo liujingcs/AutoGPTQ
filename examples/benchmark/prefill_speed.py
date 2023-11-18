@@ -372,10 +372,10 @@ def main():
         dataset, seed=args.seed, model=args.model_name_or_path, seqlen=model.seqlen,
     )
     gpus = [torch.device('cuda:%d' % i) for i in range(torch.cuda.device_count())]
-    if len(gpus) > 1:
-        llama_multigpu(model, gpus)
-    else:
-        model = model.to(DEV)
+    # if len(gpus) > 1:
+    #     llama_multigpu(model, gpus)
+    # else:
+    #     model = model.to(DEV)
     llama_benchmark(model, testloader, check=False)
 
 

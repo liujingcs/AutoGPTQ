@@ -197,6 +197,7 @@ def llama_benchmark(model, testenc, check=False):
     torch.cuda.synchronize()
 
     seq_len = model.seqlen
+    print("Seq len: {}".format(seq_len))
     nsamples = input_ids.numel() // seq_len
     max_samples = 128
     nsamples = min(nsamples, max_samples)
@@ -209,6 +210,27 @@ def llama_benchmark(model, testenc, check=False):
         return tmp
     for i, layer in enumerate(model.model.model.layers):
         layer.register_forward_hook(clear_past(i))
+
+    print('warmup')
+    with torch.no_grad():
+        attention_mask = torch.ones((1, input_ids.numel()), device=DEV)
+        seq_len = model.seqlen
+        times = []
+        tknps = []
+        torch.cuda.cudart().cudaProfilerStart()
+
+        for i in tqdm.tqdm(range(30), desc='Benchmarking', ncols=80):
+            batch = input_ids[:, (i * seq_len):((i + 1) * seq_len)].to(DEV)
+            torch.cuda.set_device(DEV)
+            out = model(
+                batch,
+                past_key_values=None,
+                attention_mask=attention_mask[:, :seq_len].reshape((1, -1))
+            #     past_key_values=cache['past'],
+            #     attention_mask=attention_mask[:, :(i + 1)*model.seqlen].reshape((1, -1))
+            )
+            cache['past'] = list(out.past_key_values)
+            del out
 
     print('Benchmarking ...')
 

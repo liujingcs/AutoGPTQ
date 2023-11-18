@@ -219,7 +219,7 @@ def llama_benchmark(model, testenc, check=False):
         tknps = []
         torch.cuda.cudart().cudaProfilerStart()
 
-        for i in tqdm.tqdm(range(30), desc='Benchmarking', ncols=80):
+        for i in tqdm(range(30), desc='Benchmarking', ncols=80):
             batch = input_ids[:, (i * seq_len):((i + 1) * seq_len)].to(DEV)
             torch.cuda.set_device(DEV)
             out = model(

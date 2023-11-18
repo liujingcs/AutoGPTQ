@@ -231,7 +231,7 @@ def llama_benchmark(model, testenc, check=False):
 
         for i in tqdm(range(nsamples), desc='Benchmarking', ncols=80):
             batch = input_ids[:, (i * seq_len):((i + 1) * seq_len)].to(DEV)
-            torch.cuda.set_device(DEV)
+            # torch.cuda.set_device(DEV)
             start_time = time.perf_counter()
             out = model(
                 batch,

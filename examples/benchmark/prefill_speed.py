@@ -389,6 +389,9 @@ def main():
         logger.info("warmup triton, this may take a while.")
         model.warmup_triton()
 
+    print("Seq length: {}".format(model.seqlen))
+    model.seqlen=2048
+
     dataset = 'wikitext2'
     dataloader, testloader = datautils.get_loaders(
         dataset, seed=args.seed, model=args.model_name_or_path, seqlen=model.seqlen,

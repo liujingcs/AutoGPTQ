@@ -258,11 +258,11 @@ def llama_benchmark(model, testenc, check=False):
 
 
 def llama_multigpu(model, gpus):
-    model.model.embed_tokens = model.model.embed_tokens.to(gpus[0])
+    model.model.model.embed_tokens = model.model.model.embed_tokens.to(gpus[0])
     import copy
     model.lm_head = copy.deepcopy(model.lm_head).to(gpus[-1])
-    if hasattr(model.model, 'norm') and model.model.norm is not None:
-        model.model.norm = model.model.norm.to(gpus[-1])
+    if hasattr(model.model.model, 'norm') and model.model.model.norm is not None:
+        model.model.model.norm = model.model.model.norm.to(gpus[-1])
 
     cache = {'mask': None, 'positions': None}
 
@@ -284,7 +284,7 @@ def llama_multigpu(model, gpus):
             tmp = self.module(*inp, **kwargs)
             return tmp
 
-    layers = model.model.layers
+    layers = model.model.model.layers
     pergpu = math.ceil(len(layers) / len(gpus))
     for i in range(len(layers)):
         print("Move layer {} to gpu: {}".format(i, gpus[i // pergpu]))
